@@ -49,8 +49,10 @@ jobs:
        - name: Clone Device Tree & kernel
          run: |
               cd ~/OrangeFox
-              mkdir device/$DEVICE_MANUFACTER
-              cd device/$DEVICE_MANUFACTER
+              mkdir device
+              cd device
+              mkdir $DEVICE_MANUFACTER
+              cd /$DEVICE_MANUFACTER
               git clone $DEVICE_TREE_REPO $DEVICE_CODENAME --depth=1
               
               cd ~/OrangeFox
