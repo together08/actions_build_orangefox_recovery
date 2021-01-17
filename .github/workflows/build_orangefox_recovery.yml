@@ -1,0 +1,87 @@
+name: build_orangefox_recovery
+
+on:
+  watch:
+    types: [started]
+    
+env:
+  DEVICE_MANUFACTER: meizu
+  DEVICE_CODENAME: m1892
+  DEVICE_SOC_CODENAME: sdm845  
+  DEVICE_TREE_REPO: https://github.com/xingrz/android_device_meizu_m1892.git
+  KERNEL_SOURCE_REPO: https://github.com/xingrz/android_kernel_meizu_sdm845.git
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.event.repository.owner.id == github.event.sender.id
+
+    steps:
+       - name: Checkout
+         uses: actions/checkout@master
+       
+       - name: Clean Up
+         run: |
+           docker rmi `docker images -q`
+           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d
+           sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* mysql* php*
+           sudo -E apt-get update
+           sudo -E apt-get -y autoremove --purge
+           sudo -E apt-get clean 
+           
+       - name: Initialization environment
+         run: |
+            cd ~
+            sudo apt install git aria2 -y
+            git clone https://gitlab.com/OrangeFox/misc/scripts
+            cd scripts
+            sudo bash setup/android_build_env.sh
+            sudo bash setup/install_android_sdk.sh
+       
+       - name: Sync Orangefox Source Code
+         run: |
+            mkdir ~/OrangeFox
+            cd ~/OrangeFox
+            repo init -u https://gitlab.com/OrangeFox/Manifest.git -b fox_9.0 --depth=1
+            repo sync -j $(nproc --all)  --force-sync 
+       
+       - name: Clone Device Tree & kernel
+         run: |
+              cd ~/OrangeFox
+              mkdir device/$DEVICE_MANUFACTER
+              cd device/$DEVICE_MANUFACTER
+              git clone $DEVICE_TREE_REPO $DEVICE_CODENAME --depth=1
+              
+              cd ~/OrangeFox
+              mkdir kernel
+              cd kernel
+              mkdir $DEVICE_MANUFACTER
+              cd $DEVICE_MANUFACTER
+              git clone $KERNEL_SOURCE_REPO $DEVICE_SOC_CODENAME --depth=1
+            
+       - name: Set up variables
+         run: |
+              export FOX_USE_NANO_EDITOR=1
+              export FOX_USE_BASH_SHELL=1
+              export FOX_ASH_IS_BASH=1
+              export FOX_VERSION="R11.0.0"
+              export OF_MAINTAINER="together08"
+              export OF_SCREEN_H=2160
+              export OF_DISABLE_MIUI_OTA_BY_DEFAULT=1
+              export OF_DISABLE_MIUI_SPECIFIC_FEATURES=1
+              export ALLOW_MISSING_DEPENDENCIES=true
+              export FOX_USE_TWRP_RECOVERY_IMAGE_BUILDER=1
+              export LC_ALL="C"
+       
+       - name: Build REC Image 
+         run: |
+              cd ~/OrangeFox 
+              source build/envsetup.sh
+              lunch omni_$DEVICE_CODENAME-eng && mka recoveryimage
+       
+       - name: Copy Image & Upload Image to WeTransfer
+         run: |
+              cp -fpr ~/OrangeFox/out/target/product/$DEVICE_CODENAME/OrangeFox-unofficial-$DEVICE_CODENAME.img ~/
+              curl -sL https://git.io/file-transfer | sh
+              ./transfer wet ~/OrangeFox-unofficial-$DEVICE_CODENAME.img
